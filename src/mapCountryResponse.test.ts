@@ -15,14 +15,14 @@ const USA: CountryRaw = {
   callingCodes: ['1'],
   topLevelDomain: ['.us'],
   borders: ['CAN', 'MEX'],
-  flag: 'https://countries.dev/flags/us.svg',
+  flag: 'https://flagcdn.com/us.svg',
 };
 
 describe('mapCountryResponse', () => {
   it('маппит реальный ответ countries.dev', () => {
     expect(mapCountryResponse(USA)).toEqual({
       name: 'United States of America',
-      flag: 'https://countries.dev/flags/us.svg',
+      flag: 'https://flagcdn.com/us.svg',
       capital: 'Washington, D.C.',
       region: 'Americas',
       population: 329_484_123,
