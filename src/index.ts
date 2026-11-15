@@ -101,3 +101,31 @@ export function mapCountryDetails(raw: CountryRaw): CountryDetails {
     alpha3Code: raw.alpha3Code ?? '',
   };
 }
+// search
+export const API_BASE = 'https://countries.dev';
+export const DEFAULT_TIMEOUT_MS = 8000;
+
+export async function searchCountries(query: string, signal: AbortSignal): Promise<Country[]> {
+  const url = `${API_BASE}/name/${encodeURIComponent(query)}`;
+  const res = await fetch(url, { signal });
+
+  if (res.status === 404) return [];
+  if (!res.ok) throw new HttpError(res.status);
+
+  const data: unknown = await res.json();
+  const list = Array.isArray(data) ? data : [data];
+  return (list as CountryRaw[]).map(mapCountryResponse);
+}
+
+export function makeSignalWithTimeout(signal: AbortSignal, ms = DEFAULT_TIMEOUT_MS): AbortSignal {
+  const timeout = AbortSignal.timeout(ms);
+  if (typeof AbortSignal.any === 'function') {
+    return AbortSignal.any([signal, timeout]);
+  }
+  const controller = new AbortController();
+  const abort = (reason: unknown): void => controller.abort(reason);
+  if (signal.aborted) abort(signal.reason);
+  else signal.addEventListener('abort', () => abort(signal.reason), { once: true });
+  timeout.addEventListener('abort', () => controller.abort(timeout.reason), { once: true });
+  return controller.signal;
+}
