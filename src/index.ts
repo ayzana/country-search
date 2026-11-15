@@ -23,3 +23,23 @@ export function debounce<T extends (...args: never[]) => void>(
 
   return wrapped;
 }
+// errors
+export class HttpError extends Error {
+  readonly status: number;
+  constructor(status: number, message = `HTTP ${status}`) {
+    super(message);
+    this.name = 'HttpError';
+    this.status = status;
+  }
+}
+export type ErrorKind = 'abort' | 'timeout' | 'http' | 'network' | 'unknown';
+
+export function classifyError(err: unknown): ErrorKind {
+  if (err instanceof DOMException) {
+    if (err.name === 'AbortError') return 'abort';
+    if (err.name === 'TimeoutError') return 'timeout';
+  }
+  if (err instanceof HttpError) return 'http';
+  if (err instanceof TypeError) return 'network';
+  return 'unknown';
+}
