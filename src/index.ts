@@ -79,10 +79,17 @@ export function classifyError(err: unknown): ErrorKind {
   return 'unknown';
 }
 // mapping
+function getFlagUrl(raw: CountryRaw): string {
+  if (raw.alpha2Code) {
+    return `https://flagcdn.com/${raw.alpha2Code.toLowerCase()}.svg`;
+  }
+  return raw.flag ?? '';
+}
+
 export function mapCountryResponse(raw: CountryRaw): Country {
   return {
     name: raw.name,
-    flag: raw.flag ?? '',
+    flag: getFlagUrl(raw) ?? '',
     capital: raw.capital ?? '',
     region: raw.region ?? '',
     population: raw.population ?? 0,
@@ -189,4 +196,181 @@ export class SearchCache {
       }
     }
   }
+}
+
+// UI
+export function setupUI(root: HTMLElement): void {
+  const cache = new SearchCache();
+  let controller: AbortController | null = null;
+  let lastQuery = '';
+
+  const input = document.createElement('input');
+  input.type = 'search';
+  input.placeholder = 'Поиск страны…';
+  input.setAttribute('aria-label', 'Поиск страны');
+
+  const status = document.createElement('div');
+  status.className = 'status';
+
+  const list = document.createElement('ul');
+  list.className = 'results';
+
+  const details = document.createElement('div');
+  details.className = 'details';
+
+  root.append(input, status, list, details);
+
+  const clear = (): void => {
+    list.replaceChildren();
+    details.replaceChildren();
+    status.replaceChildren();
+  };
+
+  const showLoading = (): void => {
+    status.textContent = 'Загрузка…';
+  };
+
+  const showError = (msg: string, retry: () => void): void => {
+    clear();
+    status.textContent = msg;
+    const btn = document.createElement('button');
+    btn.textContent = 'Повторить';
+    btn.addEventListener('click', retry);
+    status.appendChild(btn);
+  };
+
+  const showEmpty = (): void => {
+    clear();
+    status.textContent = 'Ничего не найдено';
+  };
+
+  const renderDetails = (c: CountryDetails): void => {
+    const section = document.createElement('section');
+    section.className = 'details-card';
+
+    const h = document.createElement('h2');
+    h.textContent = c.name;
+
+    const img = document.createElement('img');
+    img.src = c.flag;
+    img.alt = c.name;
+    img.width = 96;
+
+    const rows: [string, string][] = [
+      ['Столица', c.capital || '—'],
+      ['Регион', c.region || '—'],
+      ['Субрегион', c.subregion || '—'],
+      ['Население', c.population.toLocaleString()],
+      ['Площадь', `${c.area.toLocaleString()} км²`],
+      ['Языки', c.languages.join(', ') || '—'],
+      ['Валюты', c.currencies.join(', ') || '—'],
+      ['Границы', c.borders.join(', ') || '—'],
+      ['Код', c.alpha3Code || '—'],
+    ];
+
+    section.append(h, img);
+    for (const [label, value] of rows) {
+      const p = document.createElement('p');
+      p.textContent = `${label}: ${value}`;
+      section.appendChild(p);
+    }
+
+    const close = document.createElement('button');
+    close.textContent = 'Закрыть';
+    close.addEventListener('click', () => details.replaceChildren());
+    section.appendChild(close);
+
+    details.replaceChildren(section);
+  };
+
+  const renderList = (countries: Country[], raws: CountryRaw[]): void => {
+    clear();
+
+    countries.forEach((c, i) => {
+      console.log(c.flag);
+      const raw = raws[i];
+      const li = document.createElement('li');
+      li.className = 'card';
+
+      const img = document.createElement('img');
+      img.src = c.flag;
+      img.alt = c.name;
+      img.loading = 'lazy';
+      img.width = 48;
+
+      const h = document.createElement('h3');
+      h.textContent = c.name;
+
+      const cap = document.createElement('p');
+      cap.textContent = `Столица: ${c.capital || '—'}`;
+
+      const reg = document.createElement('p');
+      reg.textContent = `Регион: ${c.region || '—'}`;
+
+      const pop = document.createElement('p');
+      pop.textContent = `Население: ${c.population.toLocaleString()}`;
+
+      li.append(img, h, cap, reg, pop);
+      li.addEventListener('click', () => {
+        if (raw) renderDetails(mapCountryDetails(raw));
+      });
+
+      list.appendChild(li);
+    });
+  };
+
+  const runSearch = async (query: string): Promise<void> => {
+    lastQuery = query;
+    showLoading();
+    const local = new AbortController();
+    controller = local;
+
+    try {
+      const data = await cache.get(query, local.signal);
+      if (local.signal.aborted) return;
+      if (data.length === 0) {
+        showEmpty();
+      } else {
+        renderList(data, []);
+      }
+    } catch (err) {
+      const kind = classifyError(err);
+      if (kind === 'abort') return;
+      if (kind === 'timeout') {
+        showError('Превышено время ожидания', () => void runSearch(lastQuery));
+      } else if (kind === 'http') {
+        showError('Ошибка сервера', () => void runSearch(lastQuery));
+      } else if (kind === 'network') {
+        showError('Ошибка сети', () => void runSearch(lastQuery));
+      } else {
+        showError('Неизвестная ошибка', () => void runSearch(lastQuery));
+      }
+    }
+  };
+
+  const debouncedSearch = debounce((q: string) => {
+    void runSearch(q);
+  }, 350);
+
+  input.addEventListener('input', () => {
+    const q = input.value.trim();
+
+    controller?.abort();
+    controller = null;
+    debouncedSearch.cancel();
+
+    if (q === '') {
+      clear();
+      lastQuery = '';
+      return;
+    }
+    debouncedSearch(q);
+  });
+}
+
+if (typeof document !== 'undefined' && document.body) {
+  const root = document.createElement('main');
+  root.id = 'app';
+  document.body.appendChild(root);
+  setupUI(root);
 }
