@@ -129,3 +129,64 @@ export function makeSignalWithTimeout(signal: AbortSignal, ms = DEFAULT_TIMEOUT_
   timeout.addEventListener('abort', () => controller.abort(timeout.reason), { once: true });
   return controller.signal;
 }
+
+// CACHE
+interface InflightEntry {
+  promise: Promise<Country[]>;
+  controller: AbortController;
+  refs: number;
+}
+
+export class SearchCache {
+  private readonly resolved = new Map<string, Country[]>();
+  private readonly inflight = new Map<string, InflightEntry>();
+
+  async get(
+    query: string,
+    signal: AbortSignal,
+    timeoutMs = DEFAULT_TIMEOUT_MS
+  ): Promise<Country[]> {
+    const key = query.toLowerCase();
+    const cached = this.resolved.get(key);
+    if (cached) return cached;
+
+    let entry = this.inflight.get(key);
+    if (!entry) {
+      const controller = new AbortController();
+      const promise = searchCountries(key, makeSignalWithTimeout(controller.signal, timeoutMs))
+        .then((data) => {
+          this.resolved.set(key, data);
+          return data;
+        })
+        .finally(() => {
+          this.inflight.delete(key);
+        });
+      entry = { promise, controller, refs: 0 };
+      this.inflight.set(key, entry);
+    }
+    entry.refs += 1;
+
+    try {
+      return await Promise.race([
+        entry.promise,
+        new Promise<never>((_, reject) => {
+          if (signal.aborted) {
+            reject(new DOMException('Aborted', 'AbortError'));
+            return;
+          }
+          signal.addEventListener(
+            'abort',
+            () => reject(new DOMException('Aborted', 'AbortError')),
+            { once: true }
+          );
+        }),
+      ]);
+    } finally {
+      entry.refs -= 1;
+      if (entry.refs === 0 && this.inflight.has(key)) {
+        entry.controller.abort();
+        this.inflight.delete(key);
+      }
+    }
+  }
+}
