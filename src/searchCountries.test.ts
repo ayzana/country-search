@@ -3,6 +3,7 @@ import { searchCountries, HttpError, type CountryRaw } from './index';
 
 const USA: CountryRaw = {
   name: 'United States of America',
+  alpha2Code: 'US',
   capital: 'Washington, D.C.',
   region: 'Americas',
   population: 329_484_123,
@@ -17,16 +18,17 @@ describe('searchCountries', () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(JSON.stringify([USA]), { status: 200 })
     );
-    const r = await searchCountries('united', new AbortController().signal);
-    expect(r).toHaveLength(1);
-    expect(r[0]?.name).toBe('United States of America');
-    expect(r[0]?.languages).toEqual(['English']);
+    const { countries, raws } = await searchCountries('united', new AbortController().signal);
+    expect(countries).toHaveLength(1);
+    expect(countries[0]?.name).toBe('United States of America');
+    expect(countries[0]?.languages).toEqual(['English']);
+    expect(raws[0]?.alpha2Code).toBe('US');
   });
 
   it('404 → пустой массив (не ошибка)', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('', { status: 404 }));
     const r = await searchCountries('zzz', new AbortController().signal);
-    expect(r).toEqual([]);
+    expect(r).toEqual({ countries: [], raws: [] });
   });
 
   it('500 → HttpError', async () => {

@@ -68,11 +68,14 @@ export const DEFAULT_TIMEOUT_MS = 8000;
 export async function searchCountries(query, signal) {
   const url = `${API_BASE}/name/${encodeURIComponent(query)}`;
   const res = await fetch(url, { signal });
-  if (res.status === 404) return [];
+  if (res.status === 404) return { countries: [], raws: [] };
   if (!res.ok) throw new HttpError(res.status);
   const data = await res.json();
-  const list = Array.isArray(data) ? data : [data];
-  return list.map(mapCountryResponse);
+  const raws = Array.isArray(data) ? data : [data];
+  return {
+    countries: raws.map(mapCountryResponse),
+    raws,
+  };
 }
 export function makeSignalWithTimeout(signal, ms = DEFAULT_TIMEOUT_MS) {
   const timeout = AbortSignal.timeout(ms);
@@ -172,23 +175,20 @@ export function setupUI(root) {
     const section = document.createElement('section');
     section.className = 'details-card';
     const h = document.createElement('h2');
-    h.textContent = c.name;
-    const img = document.createElement('img');
-    img.src = c.flag;
-    img.alt = c.name;
-    img.width = 96;
+    // h.textContent = c.name;
+    // const img = document.createElement('img');
+    // img.src = c.flag;
+    // img.alt = c.name;
+    // img.width = 96;
     const rows = [
-      ['Столица', c.capital || '—'],
-      ['Регион', c.region || '—'],
       ['Субрегион', c.subregion || '—'],
-      ['Население', c.population.toLocaleString()],
       ['Площадь', `${c.area.toLocaleString()} км²`],
       ['Языки', c.languages.join(', ') || '—'],
       ['Валюты', c.currencies.join(', ') || '—'],
       ['Границы', c.borders.join(', ') || '—'],
       ['Код', c.alpha3Code || '—'],
     ];
-    section.append(h, img);
+    section.append(h);
     for (const [label, value] of rows) {
       const p = document.createElement('p');
       p.textContent = `${label}: ${value}`;
@@ -203,7 +203,6 @@ export function setupUI(root) {
   const renderList = (countries, raws) => {
     clear();
     countries.forEach((c, i) => {
-      console.log(c.flag);
       const raw = raws[i];
       const li = document.createElement('li');
       li.className = 'card';
@@ -233,12 +232,12 @@ export function setupUI(root) {
     const local = new AbortController();
     controller = local;
     try {
-      const data = await cache.get(query, local.signal);
+      const { countries, raws } = await cache.get(query, local.signal);
       if (local.signal.aborted) return;
-      if (data.length === 0) {
+      if (countries.length === 0) {
         showEmpty();
       } else {
-        renderList(data, []);
+        renderList(countries, raws);
       }
     } catch (err) {
       const kind = classifyError(err);

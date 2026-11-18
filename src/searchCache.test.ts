@@ -55,6 +55,6 @@ describe('SearchCache', () => {
 
     await expect(p1).rejects.toMatchObject({ name: 'AbortError' });
     const result = await p2;
-    expect(result).toHaveLength(1);
+    expect(result.countries).toHaveLength(1);
   });
 });
